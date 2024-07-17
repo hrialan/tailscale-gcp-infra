@@ -1,7 +1,6 @@
 
 provider "google" {
   project = var.project
-  region  = var.region
 }
 
 variable "project" {
@@ -47,19 +46,26 @@ resource "google_compute_network" "vpc_network" {
 
 # Create subnetworks for each region
 resource "google_compute_subnetwork" "subnetwork" {
-  for_each     = var.vm_configs
-  name         = "tailscale-subnetwork-${each.key}"
+  for_each      = var.vm_configs
+  name          = "tailscale-subnetwork-${each.key}"
   ip_cidr_range = each.value.cidr
-  network      = google_compute_network.vpc_network.self_link
-  region       = each.value.region
+  network       = google_compute_network.vpc_network.self_link
+  region        = each.value.region
+}
+
+# Create a dedicated service account for Tailscale VMs
+resource "google_service_account" "tailscale_service_account" {
+  account_id   = "tailscale-vm-sa"
+  display_name = "Tailscale VM Service Account"
 }
 
 # Create compute instances
 resource "google_compute_instance" "tailscale_instance" {
-  for_each    = var.vm_configs
-  name        = "tailscale-vm-${each.key}"
-  machine_type = each.value.machine_type
-  zone        = each.value.zone
+  for_each       = var.vm_configs
+  name           = "tailscale-vm-${each.key}"
+  machine_type   = each.value.machine_type
+  zone           = each.value.zone
+  can_ip_forward = true
 
   boot_disk {
     initialize_params {
@@ -79,6 +85,7 @@ resource "google_compute_instance" "tailscale_instance" {
   tags = ["tailscale"]
 
   service_account {
+    email  = google_service_account.tailscale_service_account.email
     scopes = ["https://www.googleapis.com/auth/compute.readonly"]
   }
 
@@ -107,8 +114,8 @@ resource "google_compute_instance" "tailscale_instance" {
     echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.conf
     sudo sysctl -p /etc/sysctl.conf
 
-    # Authenticate and set up as exit node
-    tailscale up --authkey=${var.auth_key} --advertise-exit-node
+    # Authenticate and set up as exit node with tag
+    tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=${each.key} --tag=tag:exit-node-gcp
     if [ $? -ne 0 ]; then
       echo "Failed to set up Tailscale" >&2
       exit 1
