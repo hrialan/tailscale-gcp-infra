@@ -115,7 +115,7 @@ resource "google_compute_instance" "tailscale_instance" {
     sudo sysctl -p /etc/sysctl.conf
 
     # Authenticate and set up as exit node with tag
-    tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=${each.key} --tag=tag:exit-node-gcp
+    tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=gce-${each.key} --advertise-tags=tag:gce-exit-node --accept-routes
     if [ $? -ne 0 ]; then
       echo "Failed to set up Tailscale" >&2
       exit 1
@@ -124,15 +124,16 @@ resource "google_compute_instance" "tailscale_instance" {
 }
 
 # Create firewall rule for SSH
-resource "google_compute_firewall" "ssh_firewall" {
-  name    = "allow-ssh"
-  network = google_compute_network.vpc_network.self_link
+# Comment if not necessary
+# resource "google_compute_firewall" "ssh_firewall" {
+#   name    = "allow-ssh"
+#   network = google_compute_network.vpc_network.self_link
 
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
+#   allow {
+#     protocol = "tcp"
+#     ports    = ["22"]
+#   }
 
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["tailscale"]
-}
+#   source_ranges = ["0.0.0.0/0"]
+#   target_tags   = ["tailscale"]
+# }
