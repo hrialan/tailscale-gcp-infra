@@ -131,6 +131,10 @@ resource "google_compute_instance" "tailscale_instance" {
     echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.conf
     sudo sysctl -p /etc/sysctl.conf
 
+    # Disable SSH for security
+    sudo systemctl stop ssh
+    sudo systemctl disable ssh
+
     # Authenticate and set up as exit node with tag
     tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=gce-${each.key} --advertise-tags=tag:gce-exit-node --accept-routes
     if [ $? -ne 0 ]; then
