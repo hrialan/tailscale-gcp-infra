@@ -36,15 +36,15 @@ variable "vm_configs" {
     cidr         = string
   }))
   default = {
-    paris = {
+    france = {
       region       = "europe-west9"
       zone         = "europe-west9-a"
-      machine_type = "e2-medium"
+      machine_type = "e2-small"
       cidr         = "10.0.1.0/24"
     }
-    netherlands = {
-      region       = "europe-west4"
-      zone         = "europe-west4-a"
+    switzerland = {
+      region       = "europe-west6"
+      zone         = "europe-west6-a"
       machine_type = "e2-small"
       cidr         = "10.0.2.0/24"
     }
@@ -100,6 +100,10 @@ resource "google_compute_instance" "tailscale_instance" {
   service_account {
     email  = google_service_account.tailscale_service_account.email
     scopes = ["https://www.googleapis.com/auth/compute.readonly"]
+  }
+
+  metadata = {
+    block-project-ssh-keys = true
   }
 
   metadata_startup_script = <<-EOT
