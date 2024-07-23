@@ -1,3 +1,4 @@
+
 terraform {
   required_version = ">= 1.5.0, < 2.0.0"
   backend "gcs" {
@@ -39,13 +40,13 @@ variable "vm_configs" {
     france = {
       region       = "europe-west9"
       zone         = "europe-west9-a"
-      machine_type = "e2-small"
+      machine_type = "e2-micro"
       cidr         = "10.0.1.0/24"
     }
     switzerland = {
       region       = "europe-west6"
       zone         = "europe-west6-a"
-      machine_type = "e2-small"
+      machine_type = "e2-micro"
       cidr         = "10.0.2.0/24"
     }
   }
@@ -70,6 +71,24 @@ resource "google_compute_subnetwork" "subnetwork" {
 resource "google_service_account" "tailscale_service_account" {
   account_id   = "tailscale-vm-sa"
   display_name = "Tailscale VM Service Account"
+}
+
+# Create Resource Policies for scheduling
+resource "google_compute_resource_policy" "instance_schedule" {
+  for_each = var.vm_configs
+  name        = "tailscale-instance-schedule-${each.key}"
+  region      = each.value.region
+  description = "Start at 6 AM and stop at 11 PM daily for ${each.key}"
+
+  instance_schedule_policy {
+    vm_start_schedule {
+      schedule = "0 6 * * *"
+    }
+    vm_stop_schedule {
+      schedule = "0 23 * * *"
+    }
+    time_zone = "Europe/Paris"
+  }
 }
 
 # Create compute instances
@@ -136,12 +155,14 @@ resource "google_compute_instance" "tailscale_instance" {
     sudo systemctl disable ssh
 
     # Authenticate and set up as exit node with tag
-    tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=gce-${each.key} --advertise-tags=tag:gce-exit-node --accept-routes
+    tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=gce-${each.key} --advertise-tags=tag:gce-exit-node --accept-routes=false --accept-dns=true
     if [ $? -ne 0 ]; then
       echo "Failed to set up Tailscale" >&2
       exit 1
     fi
   EOT
+
+  resource_policies = [google_compute_resource_policy.instance_schedule[each.key].id]
 }
 
 # Create firewall rule for SSH
