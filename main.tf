@@ -194,9 +194,25 @@ resource "google_compute_instance" "tailscale_instance" {
   resource_policies = [google_compute_resource_policy.instance_schedule[each.key].id]
 }
 
+
+# Create firewall rule for Tailscale
+# https://tailscale.com/kb/1082/firewall-ports#my-devices-are-using-a-relay-what-can-i-do-to-help-them-connect-peer-to-peer
+resource "google_compute_firewall" "tailscale_firewall" {
+  name    = "allow-tailscale"
+  network = google_compute_network.vpc_network.self_link
+
+  allow {
+    protocol = "udp"
+    ports    = ["41641"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["tailscale"]
+}
+
+
 # Create firewall rule for SSH
 # Comment if not necessary
-
 # resource "google_compute_firewall" "ssh_firewall" {
 #   name    = "allow-ssh"
 #   network = google_compute_network.vpc_network.self_link
