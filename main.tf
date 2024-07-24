@@ -28,6 +28,11 @@ variable "auth_key" {
   sensitive   = true
 }
 
+variable "nextdns_profile_id" {
+  description = "NextDNS profile id"
+  type        = string
+}
+
 variable "vm_configs" {
   description = "Configuration for VMs in different countries"
   type = map(object({
@@ -45,7 +50,7 @@ variable "vm_configs" {
     }
     switzerland = {
       region       = "europe-west6"
-      zone         = "europe-west6-a"
+      zone         = "europe-west6-b"
       machine_type = "e2-micro"
       cidr         = "10.0.2.0/24"
     }
@@ -132,9 +137,9 @@ resource "google_compute_instance" "tailscale_instance" {
 
     # Update package list and install necessary packages
     apt-get update
-    apt-get install -y curl
+    apt-get install -y curl apt-transport-https
     if [ $? -ne 0 ]; then
-      echo "Failed to install curl" >&2
+      echo "Failed to install curl or apt-transport-https" >&2
       exit 1
     fi
 
@@ -145,21 +150,45 @@ resource "google_compute_instance" "tailscale_instance" {
       exit 1
     fi
 
+    # Install and activate NextDNS
+    wget -qO /usr/share/keyrings/nextdns.gpg https://repo.nextdns.io/nextdns.gpg
+    if [ $? -ne 0 ]; then
+      echo "Failed to download NextDNS GPG key" >&2
+      exit 1
+    fi
+
+    echo "deb [signed-by=/usr/share/keyrings/nextdns.gpg] https://repo.nextdns.io/deb stable main" | tee /etc/apt/sources.list.d/nextdns.list
+    apt-get update
+    apt-get install -y nextdns
+    if [ $? -ne 0 ]; then
+      echo "Failed to install NextDNS" >&2
+      exit 1
+    fi
+
+    nextdns install \
+      -profile ${var.nextdns_profile_id} \
+      -report-client-info \
+      -auto-activate
+
     # Enable port forwarding
-    echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.conf
-    echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.conf
-    sudo sysctl -p /etc/sysctl.conf
+    echo 'net.ipv4.ip_forward = 1' | tee -a /etc/sysctl.conf
+    echo 'net.ipv6.conf.all.forwarding = 1' | tee -a /etc/sysctl.conf
+    sysctl -p /etc/sysctl.conf
 
     # Disable SSH for security
-    sudo systemctl stop ssh
-    sudo systemctl disable ssh
+    systemctl stop ssh
+    systemctl disable ssh
 
     # Authenticate and set up as exit node with tag
-    tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=gce-${each.key} --advertise-tags=tag:gce-exit-node --accept-routes=false --accept-dns=true
+    tailscale up --authkey=${var.auth_key} --advertise-exit-node --hostname=gce-${each.key} --advertise-tags=tag:gce-exit-node --accept-routes=false --accept-dns=false
     if [ $? -ne 0 ]; then
       echo "Failed to set up Tailscale" >&2
       exit 1
     fi
+
+    # Enable automatic updates
+    apt-get install -y unattended-upgrades
+    dpkg-reconfigure --priority=low unattended-upgrades
   EOT
 
   resource_policies = [google_compute_resource_policy.instance_schedule[each.key].id]
@@ -167,6 +196,7 @@ resource "google_compute_instance" "tailscale_instance" {
 
 # Create firewall rule for SSH
 # Comment if not necessary
+
 # resource "google_compute_firewall" "ssh_firewall" {
 #   name    = "allow-ssh"
 #   network = google_compute_network.vpc_network.self_link
