@@ -83,14 +83,14 @@ resource "google_compute_resource_policy" "instance_schedule" {
   for_each = var.vm_configs
   name        = "tailscale-instance-schedule-${each.key}"
   region      = each.value.region
-  description = "Start at 6 AM and stop at 11 PM daily for ${each.key}"
+  description = "Start and stop VMs daily for ${each.key}"
 
   instance_schedule_policy {
     vm_start_schedule {
-      schedule = "0 6 * * *"
+      schedule = "0 5 * * *"
     }
     vm_stop_schedule {
-      schedule = "0 23 * * *"
+      schedule = "0 1 * * *"
     }
     time_zone = "Europe/Paris"
   }
@@ -107,6 +107,7 @@ resource "google_compute_instance" "tailscale_instance" {
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-12"
+      type  = "pd-ssd"
     }
   }
 
@@ -189,16 +190,35 @@ resource "google_compute_instance" "tailscale_instance" {
     # Enable automatic updates
     apt-get install -y unattended-upgrades
     dpkg-reconfigure --priority=low unattended-upgrades
+
+    # Mount /tmp, /var/log, and /var/tmp as tmpfs
+    echo 'tmpfs /tmp tmpfs defaults,noatime,nosuid,nodev,mode=1777,size=512M 0 0' | tee -a /etc/fstab
+    echo 'tmpfs /var/log tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=512M 0 0' | tee -a /etc/fstab
+    echo 'tmpfs /var/tmp tmpfs defaults,noatime,nosuid,nodev,mode=1777,size=512M 0 0' | tee -a /etc/fstab
+    
+    # Ensure directories are empty before mounting
+    rm -rf /tmp/*
+    rm -rf /var/log/*
+    rm -rf /var/tmp/*
+
+    mount /tmp
+    mount /var/log
+    mount /var/tmp
+
+    # Configure local firewall
+    apt-get install -y ufw
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow 41641/udp
+    ufw enable
   EOT
 
   resource_policies = [google_compute_resource_policy.instance_schedule[each.key].id]
 }
 
-
-# Create firewall rule for Tailscale
-# https://tailscale.com/kb/1082/firewall-ports#my-devices-are-using-a-relay-what-can-i-do-to-help-them-connect-peer-to-peer
-resource "google_compute_firewall" "tailscale_firewall" {
-  name    = "allow-tailscale"
+# Create firewall rule for Tailscale (IPv4)
+resource "google_compute_firewall" "tailscale_firewall_ipv4" {
+  name    = "allow-tailscale-ipv4"
   network = google_compute_network.vpc_network.self_link
 
   allow {
@@ -210,6 +230,19 @@ resource "google_compute_firewall" "tailscale_firewall" {
   target_tags   = ["tailscale"]
 }
 
+# Create firewall rule for Tailscale (IPv6)
+resource "google_compute_firewall" "tailscale_firewall_ipv6" {
+  name    = "allow-tailscale-ipv6"
+  network = google_compute_network.vpc_network.self_link
+
+  allow {
+    protocol = "udp"
+    ports    = ["41641"]
+  }
+
+  source_ranges = ["::/0"]
+  target_tags   = ["tailscale"]
+}
 
 # Create firewall rule for SSH
 # Comment if not necessary
