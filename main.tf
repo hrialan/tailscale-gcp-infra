@@ -42,12 +42,12 @@ variable "vm_configs" {
     cidr         = string
   }))
   default = {
-    france = {
-      region       = "europe-west9"
-      zone         = "europe-west9-a"
-      machine_type = "e2-micro"
-      cidr         = "10.0.1.0/24"
-    }
+    # france = {
+    #   region       = "europe-west9"
+    #   zone         = "europe-west9-a"
+    #   machine_type = "e2-micro"
+    #   cidr         = "10.0.1.0/24"
+    # }
     switzerland = {
       region       = "europe-west6"
       zone         = "europe-west6-b"
@@ -87,10 +87,10 @@ resource "google_compute_resource_policy" "instance_schedule" {
 
   instance_schedule_policy {
     vm_start_schedule {
-      schedule = "0 5 * * *"
+      schedule = "0 7 * * *"
     }
     vm_stop_schedule {
-      schedule = "0 1 * * *"
+      schedule = "0 23 * * *"
     }
     time_zone = "Europe/Paris"
   }
@@ -107,7 +107,6 @@ resource "google_compute_instance" "tailscale_instance" {
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-12"
-      type  = "pd-ssd"
     }
   }
 
@@ -116,7 +115,7 @@ resource "google_compute_instance" "tailscale_instance" {
     subnetwork = google_compute_subnetwork.subnetwork[each.key].self_link
 
     access_config {
-      # No need to specify nat_ip, GCP will assign an ephemeral IP
+      # Ephemeral IP for privacy
     }
   }
 
@@ -168,7 +167,6 @@ resource "google_compute_instance" "tailscale_instance" {
 
     nextdns install \
       -profile ${var.nextdns_profile_id} \
-      -report-client-info \
       -auto-activate
 
     # Enable port forwarding
