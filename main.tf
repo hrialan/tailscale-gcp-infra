@@ -42,15 +42,15 @@ variable "vm_configs" {
     cidr         = string
   }))
   default = {
-    # france = {
-    #   region       = "europe-west9"
-    #   zone         = "europe-west9-a"
-    #   machine_type = "e2-micro"
-    #   cidr         = "10.0.1.0/24"
-    # }
+    france = {
+      region       = "europe-west9"
+      zone         = "europe-west9-a"
+      machine_type = "e2-micro"
+      cidr         = "10.0.1.0/24"
+    }
     switzerland = {
       region       = "europe-west6"
-      zone         = "europe-west6-b"
+      zone         = "europe-west6-a"
       machine_type = "e2-micro"
       cidr         = "10.0.2.0/24"
     }
@@ -87,7 +87,7 @@ resource "google_compute_resource_policy" "instance_schedule" {
 
   instance_schedule_policy {
     vm_start_schedule {
-      schedule = "0 7 * * *"
+      schedule = "0 6 * * *"
     }
     vm_stop_schedule {
       schedule = "0 23 * * *"
@@ -115,7 +115,7 @@ resource "google_compute_instance" "tailscale_instance" {
     subnetwork = google_compute_subnetwork.subnetwork[each.key].self_link
 
     access_config {
-      # Ephemeral IP for privacy
+      network_tier = "STANDARD"
     }
   }
 
