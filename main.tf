@@ -39,21 +39,38 @@ variable "vm_configs" {
     region       = string
     zone         = string
     machine_type = string
-    cidr         = string
   }))
   default = {
     france = {
       region       = "europe-west9"
       zone         = "europe-west9-a"
       machine_type = "e2-micro"
-      cidr         = "10.0.1.0/24"
     }
-    switzerland = {
-      region       = "europe-west6"
-      zone         = "europe-west6-a"
-      machine_type = "e2-micro"
-      cidr         = "10.0.2.0/24"
-    }
+    # switzerland = {
+    #   region       = "europe-west6"
+    #   zone         = "europe-west6-a"
+    #   machine_type = "e2-micro"
+    # }
+    # belgium = {
+    #   region       = "europe-west1"
+    #   zone         = "europe-west1-b"
+    #   machine_type = "e2-micro"
+    # }
+    # # Free tier
+    # us = {
+    #   region       = "us-west1"
+    #   zone         = "us-west1-a"
+    #   machine_type = "e2-micro"
+    # }
+  }
+}
+
+locals {
+  vm_configs_with_cidr = {
+    for idx, vpn_location in keys(var.vm_configs) : vpn_location => merge(
+      var.vm_configs[vpn_location],
+      { cidr = format("10.0.%d.0/24", idx) }
+    )
   }
 }
 
@@ -65,7 +82,7 @@ resource "google_compute_network" "vpc_network" {
 
 # Create subnetworks for each region
 resource "google_compute_subnetwork" "subnetwork" {
-  for_each      = var.vm_configs
+  for_each      = local.vm_configs_with_cidr
   name          = "tailscale-subnetwork-${each.key}"
   ip_cidr_range = each.value.cidr
   network       = google_compute_network.vpc_network.self_link
@@ -80,7 +97,7 @@ resource "google_service_account" "tailscale_service_account" {
 
 # Create Resource Policies for scheduling
 resource "google_compute_resource_policy" "instance_schedule" {
-  for_each = var.vm_configs
+  for_each    = var.vm_configs
   name        = "tailscale-instance-schedule-${each.key}"
   region      = each.value.region
   description = "Start and stop VMs daily for ${each.key}"
@@ -242,10 +259,10 @@ resource "google_compute_firewall" "tailscale_firewall_ipv6" {
   target_tags   = ["tailscale"]
 }
 
-# Create firewall rule for SSH
-# Comment if not necessary
-# resource "google_compute_firewall" "ssh_firewall" {
-#   name    = "allow-ssh"
+# Allow SSH from IAP on data processing VM instances
+# https://cloud.google.com/iap/docs/using-tcp-forwarding#preparing_your_project_for_tcp_forwarding
+# resource "google_compute_firewall" "iap-ssh" {
+#   name    = "allow-ssh-from-iap"
 #   network = google_compute_network.vpc_network.self_link
 
 #   allow {
@@ -253,6 +270,6 @@ resource "google_compute_firewall" "tailscale_firewall_ipv6" {
 #     ports    = ["22"]
 #   }
 
-#   source_ranges = ["0.0.0.0/0"]
+#   source_ranges = ["35.235.240.0/20"]
 #   target_tags   = ["tailscale"]
 # }
